@@ -5,6 +5,8 @@ use axum::{
     routing::{get, post},
 };
 
+use dotenv::dotenv;
+
 mod handler;
 mod orchestrator;
 
@@ -15,6 +17,8 @@ struct AppState {
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
     let state = AppState {
         chungustrator: Arc::new(
             orchestrator::Chungustrator::new().expect("Maybe failed because docker xD"),

@@ -7,5 +7,6 @@ edition = "2024"
 axum = "0.8.4"
 bollard = "0.19.2"
 bollard-stubs = "=1.49.0-rc.28.3.3"
+dotenv = "0.15.0"
 serde = { version = "1.0.219", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread"] }
