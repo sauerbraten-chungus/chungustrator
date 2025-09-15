@@ -1,3 +1,4 @@
+use crate::orchestrator::ContainerCreationResult;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
@@ -6,6 +7,8 @@ use crate::AppState;
 #[derive(Serialize)]
 struct CreateSuccessResponse {
     id: String,
+    wan_ip: String,
+    lan_ip: String,
 }
 
 #[derive(Serialize)]
@@ -14,11 +17,22 @@ struct CreateFailedResponse {
 }
 
 pub async fn create_handler(State(state): State<AppState>) -> impl IntoResponse {
-    match state.chungustrator.create_container().await {
-        Ok(id) => {
+    let mut chungustrator = state.chungustrator.lock().await;
+    let create_result = chungustrator.create_container().await;
+
+    match create_result {
+        Ok(result) => {
             // stuff
-            println!("{}", id);
-            (StatusCode::OK, Json(CreateSuccessResponse { id })).into_response()
+            println!("{}", result.id);
+            (
+                StatusCode::OK,
+                Json(CreateSuccessResponse {
+                    id: result.id,
+                    wan_ip: result.wan_ip,
+                    lan_ip: result.lan_ip,
+                }),
+            )
+                .into_response()
         }
         Err(e) => {
             // stuff

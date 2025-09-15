@@ -6,13 +6,14 @@ use axum::{
 };
 
 use dotenv::dotenv;
+use tokio::sync::Mutex;
 
 mod handler;
 mod orchestrator;
 
 #[derive(Clone)]
 struct AppState {
-    chungustrator: Arc<orchestrator::Chungustrator>,
+    chungustrator: Arc<Mutex<orchestrator::Chungustrator>>,
 }
 
 #[tokio::main]
@@ -20,9 +21,9 @@ async fn main() {
     dotenv().ok();
 
     let state = AppState {
-        chungustrator: Arc::new(
+        chungustrator: Arc::new(Mutex::new(
             orchestrator::Chungustrator::new().expect("Maybe failed because docker xD"),
-        ),
+        )),
     };
 
     let app = Router::new()
