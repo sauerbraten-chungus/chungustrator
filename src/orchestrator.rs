@@ -9,7 +9,8 @@ use std::{
 
 use bollard::{
     Docker,
-    models::{ContainerCreateBody, HostConfig, PortBinding},
+    models::{ContainerCreateBody, EndpointSettings, HostConfig, PortBinding},
+    network::ConnectNetworkOptions,
     query_parameters::CreateContainerOptionsBuilder,
 };
 use serde::Serialize;
@@ -141,7 +142,8 @@ impl Chungustrator {
         &mut self,
     ) -> Result<ContainerCreationResult, bollard::errors::Error> {
         let ports = self.port_allocator.allocate_port();
-        let port = ports.game_server_port;
+        let game_server_port = ports.game_server_port;
+        let server_query_client_port = ports.server_query_client_port;
 
         let game_server_container_id = self
             .client
@@ -154,17 +156,21 @@ impl Chungustrator {
                                 let mut port_bindings =
                                     HashMap::<String, Option<Vec<PortBinding>>>::new();
                                 port_bindings.insert(
-                                    format!("{}/tcp", port),
+                                    format!("{}/tcp", game_server_port),
+                                    // "28785/tcp".to_string(),
                                     Some(vec![PortBinding {
                                         host_ip: Some("0.0.0.0".to_string()),
-                                        host_port: Some(port.to_string()),
+                                        host_port: Some(game_server_port.to_string()),
+                                        // host_port: Some("28785".to_string()),
                                     }]),
                                 );
                                 port_bindings.insert(
-                                    format!("{}/udp", port),
+                                    format!("{}/udp", game_server_port),
+                                    // "28785/udp".to_string(),
                                     Some(vec![PortBinding {
                                         host_ip: Some("0.0.0.0".to_string()),
-                                        host_port: Some(port.to_string()),
+                                        host_port: Some(game_server_port.to_string()),
+                                        // host_port: Some("28785".to_string()),
                                     }]),
                                 );
                                 port_bindings
@@ -174,6 +180,21 @@ impl Chungustrator {
                         }
                     }),
                     image: Some("chungusmod:latest".to_string()),
+                    env: Some(vec![format!("GAME_SERVER_PORT={}", game_server_port)]),
+                    exposed_ports: Some({
+                        let mut exposed_ports = HashMap::new();
+                        exposed_ports.insert(format!("{}/tcp", game_server_port), HashMap::new());
+                        exposed_ports.insert(format!("{}/udp", game_server_port), HashMap::new());
+                        exposed_ports.insert(
+                            format!("{}/tcp", server_query_client_port.to_string()),
+                            HashMap::new(),
+                        );
+                        exposed_ports.insert(
+                            format!("{}/udp", server_query_client_port.to_string()),
+                            HashMap::new(),
+                        );
+                        exposed_ports
+                    }),
                     ..Default::default()
                 },
             )
@@ -197,7 +218,7 @@ impl Chungustrator {
                             "PLAYER_SERVICE_IP=http://player:3000".to_string(),
                             "AUTH_SERVICE_IP=http://auth:8081".to_string(),
                             "GAME_SERVER_IP=localhost".to_string(),
-                            format!("GAME_SERVER_PORT={}", port),
+                            format!("GAME_SERVER_PORT={}", game_server_port),
                             format!(
                                 "SECRET_CHUNGUS={}",
                                 env::var("SECRET_CHUNGUS").unwrap_or_default()
@@ -213,6 +234,16 @@ impl Chungustrator {
             )
             .await?
             .id;
+
+        // self.client.connect_network(
+        //     "vidya_chunguswork",
+        //     ConnectNetworkOptions {
+        //         container: game_server_container_id.clone(),
+        //         endpoint_config: EndpointSettings {
+        //             ..Default::default()
+        //         },
+        //     },
+        // );
 
         self.client
             .start_container(
