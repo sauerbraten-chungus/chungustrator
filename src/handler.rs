@@ -9,6 +9,7 @@ struct CreateSuccessResponse {
     id: String,
     wan_ip: String,
     lan_ip: String,
+    port: u16,
 }
 
 #[derive(Serialize)]
@@ -30,6 +31,7 @@ pub async fn create_handler(State(state): State<AppState>) -> impl IntoResponse 
                     id: result.id,
                     wan_ip: result.wan_ip,
                     lan_ip: result.lan_ip,
+                    port: result.port,
                 }),
             )
                 .into_response()

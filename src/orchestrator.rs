@@ -98,6 +98,7 @@ pub struct ContainerCreationResult {
     pub id: String,
     pub wan_ip: String,
     pub lan_ip: String,
+    pub port: u16,
 }
 
 struct ChungustratorConfig {
@@ -263,6 +264,7 @@ impl Chungustrator {
             id: game_server_container_id,
             wan_ip: self.config.wan_ip.clone(),
             lan_ip: self.config.lan_ip.clone(),
+            port: game_server_port,
         })
     }
 }
