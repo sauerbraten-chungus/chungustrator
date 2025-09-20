@@ -15,6 +15,34 @@ use bollard::{
 };
 use serde::Serialize;
 
+use thiserror::Error;
+use tokio::{select, sync::mpsc, time};
+use tracing::{error, info};
+
+#[derive(Error, Debug)]
+pub enum OrchestratorError {
+    #[error("Error from docker: {0}")]
+    Docker(#[from] bollard::errors::Error),
+}
+
+pub enum OrchestratorMessage {
+    CreateContainer {
+        response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
+    },
+}
+
+pub enum OrchestratorResponse {
+    ContainerCreationSuccess {
+        id: String,
+        wan_ip: String,
+        lan_ip: String,
+        port: u16,
+    },
+    ContainerCreationError {
+        error: String,
+    },
+}
+
 pub struct ServerPorts {
     game_server_port: u16,
     server_query_client_port: u16,
@@ -94,13 +122,6 @@ impl PortAllocator {
     }
 }
 
-pub struct ContainerCreationResult {
-    pub id: String,
-    pub wan_ip: String,
-    pub lan_ip: String,
-    pub port: u16,
-}
-
 struct ChungustratorConfig {
     wan_ip: String,
     lan_ip: String,
@@ -120,28 +141,63 @@ pub struct Chungustrator {
     client: Docker,
     list: HashMap<String, String>,
     port_allocator: PortAllocator,
+    rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
 }
 
 impl Chungustrator {
-    pub fn new() -> Result<Self, bollard::errors::Error> {
+    pub async fn new(
+        rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
+    ) -> Result<(), OrchestratorError> {
         let config = ChungustratorConfig::new().unwrap_or_else(|_| ChungustratorConfig {
             wan_ip: "".to_string(),
             lan_ip: "".to_string(),
         });
 
         let client = Docker::connect_with_socket_defaults()?;
-
-        Ok(Self {
+        let orchestrator = Chungustrator {
             config,
             client,
             list: HashMap::new(),
             port_allocator: PortAllocator::new(28785),
-        })
+            rx,
+        };
+
+        tokio::spawn(async move { orchestrator.run().await });
+
+        Ok(())
+    }
+
+    async fn run(mut self) {
+        let mut interval = time::interval(time::Duration::from_secs(5));
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    info!("processing internal shit");
+                }
+                Some(msg) = self.rx.recv() => {
+                    info!("received msg from handler!");
+                    if let Err(e) = self.receive(msg).await {
+                        error!("Orchestrator Error: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn receive(&mut self, msg: OrchestratorMessage) -> Result<(), OrchestratorError> {
+        match msg {
+            OrchestratorMessage::CreateContainer { response_tx } => {
+                self.create_container(response_tx).await?;
+            }
+        }
+        Ok(())
     }
 
     pub async fn create_container(
         &mut self,
-    ) -> Result<ContainerCreationResult, bollard::errors::Error> {
+        response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
+    ) -> Result<(), bollard::errors::Error> {
         let ports = self.port_allocator.allocate_port();
         let game_server_port = ports.game_server_port;
         let server_query_client_port = ports.server_query_client_port;
@@ -158,20 +214,16 @@ impl Chungustrator {
                                     HashMap::<String, Option<Vec<PortBinding>>>::new();
                                 port_bindings.insert(
                                     format!("{}/tcp", game_server_port),
-                                    // "28785/tcp".to_string(),
                                     Some(vec![PortBinding {
                                         host_ip: Some("0.0.0.0".to_string()),
                                         host_port: Some(game_server_port.to_string()),
-                                        // host_port: Some("28785".to_string()),
                                     }]),
                                 );
                                 port_bindings.insert(
                                     format!("{}/udp", game_server_port),
-                                    // "28785/udp".to_string(),
                                     Some(vec![PortBinding {
                                         host_ip: Some("0.0.0.0".to_string()),
                                         host_port: Some(game_server_port.to_string()),
-                                        // host_port: Some("28785".to_string()),
                                     }]),
                                 );
                                 port_bindings
@@ -236,16 +288,6 @@ impl Chungustrator {
             .await?
             .id;
 
-        // self.client.connect_network(
-        //     "vidya_chunguswork",
-        //     ConnectNetworkOptions {
-        //         container: game_server_container_id.clone(),
-        //         endpoint_config: EndpointSettings {
-        //             ..Default::default()
-        //         },
-        //     },
-        // );
-
         self.client
             .start_container(
                 &game_server_container_id,
@@ -260,11 +302,15 @@ impl Chungustrator {
             )
             .await?;
 
-        Ok(ContainerCreationResult {
+        if let Err(e) = response_tx.send(OrchestratorResponse::ContainerCreationSuccess {
             id: game_server_container_id,
             wan_ip: self.config.wan_ip.clone(),
             lan_ip: self.config.lan_ip.clone(),
             port: game_server_port,
-        })
+        }) {
+            error!("Channel error sending create container response: {}", e);
+        }
+
+        Ok(())
     }
 }

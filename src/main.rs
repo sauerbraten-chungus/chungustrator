@@ -6,25 +6,32 @@ use axum::{
 };
 
 use dotenv::dotenv;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
+use tracing::error;
 
 mod handler;
 mod orchestrator;
 
 #[derive(Clone)]
 struct AppState {
-    chungustrator: Arc<Mutex<orchestrator::Chungustrator>>,
+    tx: mpsc::UnboundedSender<orchestrator::OrchestratorMessage>,
 }
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
 
-    let state = AppState {
-        chungustrator: Arc::new(Mutex::new(
-            orchestrator::Chungustrator::new().expect("Maybe failed because docker xD"),
-        )),
-    };
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_thread_ids(true)
+        .init();
+
+    let (tx, rx) = mpsc::unbounded_channel();
+    if let Err(e) = orchestrator::Chungustrator::new(rx).await {
+        error!("Error creating chungustrator: {}", e);
+    }
+
+    let state = AppState { tx };
 
     let app = Router::new()
         .route("/health", get(|| async { "Hello World!" }))
