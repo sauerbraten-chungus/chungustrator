@@ -3,15 +3,6 @@ name = "chungustrator"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
-name = "chungus-server"
-path = "src/server.rs"
-
-
-[[bin]]
-name = "chungus-client"
-path = "src/client.rs"
-
 [dependencies]
 axum = "0.8.4"
 bollard = "0.19.2"

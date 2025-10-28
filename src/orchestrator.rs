@@ -17,7 +17,10 @@ use serde::Serialize;
 
 use thiserror::Error;
 use tokio::{select, sync::mpsc, time};
+use tonic::transport::Channel;
 use tracing::{error, info};
+
+use crate::chungustrator_enet::auth_code_service_client::AuthCodeServiceClient;
 
 #[derive(Error, Debug)]
 pub enum OrchestratorError {
@@ -137,6 +140,7 @@ impl ChungustratorConfig {
 }
 
 pub struct Chungustrator {
+    auth_stub: AuthCodeServiceClient<Channel>,
     config: ChungustratorConfig,
     client: Docker,
     list: HashMap<String, String>,
@@ -147,6 +151,7 @@ pub struct Chungustrator {
 impl Chungustrator {
     pub async fn new(
         rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
+        auth_stub: AuthCodeServiceClient<Channel>,
     ) -> Result<(), OrchestratorError> {
         let config = ChungustratorConfig::new().unwrap_or_else(|_| ChungustratorConfig {
             wan_ip: "".to_string(),
@@ -155,6 +160,7 @@ impl Chungustrator {
 
         let client = Docker::connect_with_socket_defaults()?;
         let orchestrator = Chungustrator {
+            auth_stub,
             config,
             client,
             list: HashMap::new(),
