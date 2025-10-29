@@ -20,12 +20,16 @@ use tokio::{select, sync::mpsc, time};
 use tonic::transport::Channel;
 use tracing::{error, info};
 
-use crate::chungustrator_enet::auth_code_service_client::AuthCodeServiceClient;
+use crate::chungustrator_enet::{
+    self, AuthCodeRequest, auth_code_service_client::AuthCodeServiceClient,
+};
 
 #[derive(Error, Debug)]
 pub enum OrchestratorError {
     #[error("Error from docker: {0}")]
     Docker(#[from] bollard::errors::Error),
+    #[error("Error from tonic: {0}")]
+    Tonic(#[from] tonic::Status),
 }
 
 pub enum OrchestratorMessage {
@@ -203,7 +207,7 @@ impl Chungustrator {
     pub async fn create_container(
         &mut self,
         response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
-    ) -> Result<(), bollard::errors::Error> {
+    ) -> Result<(), OrchestratorError> {
         let ports = self.port_allocator.allocate_port();
         let game_server_port = ports.game_server_port;
         let server_query_client_port = ports.server_query_client_port;
@@ -316,6 +320,11 @@ impl Chungustrator {
         }) {
             error!("Channel error sending create container response: {}", e);
         }
+
+        let auth_code_request = tonic::Request::new(AuthCodeRequest {
+            codes: HashMap::from([("test".to_string(), "123".to_string())]),
+        });
+        self.auth_stub.send_auth_codes(auth_code_request).await?;
 
         Ok(())
     }
