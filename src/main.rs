@@ -6,12 +6,14 @@ use axum::{
 };
 
 use dotenv::dotenv;
+use service::chungustrator_rpc::chungustrator_server::ChungustratorServer;
 use tokio::sync::{Mutex, mpsc};
+use tonic::transport::Server;
 use tracing::error;
 
 use chungustrator_enet::auth_code_service_client::AuthCodeServiceClient;
 
-mod handler;
+// mod handler;
 mod orchestrator;
 mod service;
 
@@ -42,15 +44,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let chungustrator_grpc_service = service::ChungustratorService { tx };
 
-    // let state = AppState { tx };
+    let svc = ChungustratorServer::new(chungustrator_grpc_service);
 
-    // let app = Router::new()
-    //     .route("/health", get(|| async { "Hello World!" }))
-    //     .route("/create", post(handler::create_handler))
-    //     .with_state(state);
-
-    // let listener = tokio::net::TcpListener::bind("0.0.0.0:7000").await.unwrap();
-    // axum::serve(listener, app).await.unwrap();
+    Server::builder()
+        .add_service(svc)
+        .serve("0.0.0.0:7000".parse().unwrap())
+        .await?;
 
     Ok(())
 }

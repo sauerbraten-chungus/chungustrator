@@ -34,6 +34,7 @@ pub enum OrchestratorError {
 
 pub enum OrchestratorMessage {
     CreateContainer {
+        auth_codes: HashMap<String, String>,
         response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
     },
 }
@@ -197,8 +198,11 @@ impl Chungustrator {
 
     async fn receive(&mut self, msg: OrchestratorMessage) -> Result<(), OrchestratorError> {
         match msg {
-            OrchestratorMessage::CreateContainer { response_tx } => {
-                self.create_container(response_tx).await?;
+            OrchestratorMessage::CreateContainer {
+                auth_codes,
+                response_tx,
+            } => {
+                self.create_container(auth_codes, response_tx).await?;
             }
         }
         Ok(())
@@ -206,6 +210,7 @@ impl Chungustrator {
 
     pub async fn create_container(
         &mut self,
+        auth_codes: HashMap<String, String>,
         response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
     ) -> Result<(), OrchestratorError> {
         let ports = self.port_allocator.allocate_port();
