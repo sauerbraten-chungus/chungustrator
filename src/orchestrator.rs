@@ -326,10 +326,15 @@ impl Chungustrator {
             error!("Channel error sending create container response: {}", e);
         }
 
-        let auth_code_request = tonic::Request::new(AuthCodeRequest {
-            codes: HashMap::from([("test".to_string(), "123".to_string())]),
-        });
-        self.auth_stub.send_auth_codes(auth_code_request).await?;
+        let auth_code_request = tonic::Request::new(AuthCodeRequest { codes: auth_codes });
+        match self.auth_stub.send_auth_codes(auth_code_request).await {
+            Ok(response) => {
+                info!("{}", response.into_inner().msg);
+            }
+            Err(status) => {
+                error!("Failed to send auth codes: {}", status.code());
+            }
+        };
 
         Ok(())
     }
