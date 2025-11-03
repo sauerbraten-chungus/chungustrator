@@ -1,14 +1,14 @@
 syntax = "proto3";
 package chungustrator_enet;
 
-service AuthCodeService {
-  rpc SendAuthCodes(AuthCodeRequest) returns (AuthCodeResponse);
+service VerificationCodeService {
+  rpc SendVerificationCodes(VerificationCodeRequest) returns (VerificationCodeResponse);
 }
 
-message AuthCodeRequest {
+message VerificationCodeRequest {
     map<string, string> codes = 1;
 }
 
-message AuthCodeResponse {
+message VerificationCodeResponse {
     string msg = 1;
 }

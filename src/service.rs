@@ -21,11 +21,11 @@ impl Chungustrator for ChungustratorService {
     ) -> Result<Response<MatchResponse>, Status> {
         let (response_tx, mut response_rx) = mpsc::unbounded_channel();
 
-        let auth_codes = request.into_inner().auth_codes;
+        let verification_codes = request.into_inner().verification_codes;
 
         self.tx
             .send(OrchestratorMessage::CreateContainer {
-                auth_codes,
+                verification_codes,
                 response_tx,
             })
             .map_err(|e| Status::internal(format!("Something happened: {}", e)))?;

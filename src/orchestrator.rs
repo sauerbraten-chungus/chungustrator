@@ -21,7 +21,7 @@ use tonic::transport::Channel;
 use tracing::{error, info};
 
 use crate::chungustrator_enet::{
-    self, AuthCodeRequest, auth_code_service_client::AuthCodeServiceClient,
+    self, VerificationCodeRequest, verification_code_service_client::VerificationCodeServiceClient,
 };
 
 #[derive(Error, Debug)]
@@ -34,7 +34,7 @@ pub enum OrchestratorError {
 
 pub enum OrchestratorMessage {
     CreateContainer {
-        auth_codes: HashMap<String, String>,
+        verification_codes: HashMap<String, String>,
         response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
     },
 }
@@ -145,7 +145,7 @@ impl ChungustratorConfig {
 }
 
 pub struct Chungustrator {
-    auth_stub: AuthCodeServiceClient<Channel>,
+    verification_stub: VerificationCodeServiceClient<Channel>,
     config: ChungustratorConfig,
     client: Docker,
     list: HashMap<String, String>,
@@ -156,7 +156,7 @@ pub struct Chungustrator {
 impl Chungustrator {
     pub async fn new(
         rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
-        auth_stub: AuthCodeServiceClient<Channel>,
+        verification_stub: VerificationCodeServiceClient<Channel>,
     ) -> Result<(), OrchestratorError> {
         let config = ChungustratorConfig::new().unwrap_or_else(|_| ChungustratorConfig {
             wan_ip: "".to_string(),
@@ -165,7 +165,7 @@ impl Chungustrator {
 
         let client = Docker::connect_with_socket_defaults()?;
         let orchestrator = Chungustrator {
-            auth_stub,
+            verification_stub,
             config,
             client,
             list: HashMap::new(),
@@ -199,10 +199,11 @@ impl Chungustrator {
     async fn receive(&mut self, msg: OrchestratorMessage) -> Result<(), OrchestratorError> {
         match msg {
             OrchestratorMessage::CreateContainer {
-                auth_codes,
+                verification_codes,
                 response_tx,
             } => {
-                self.create_container(auth_codes, response_tx).await?;
+                self.create_container(verification_codes, response_tx)
+                    .await?;
             }
         }
         Ok(())
@@ -210,7 +211,7 @@ impl Chungustrator {
 
     pub async fn create_container(
         &mut self,
-        auth_codes: HashMap<String, String>,
+        verification_codes: HashMap<String, String>,
         response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
     ) -> Result<(), OrchestratorError> {
         let ports = self.port_allocator.allocate_port();
@@ -326,13 +327,19 @@ impl Chungustrator {
             error!("Channel error sending create container response: {}", e);
         }
 
-        let auth_code_request = tonic::Request::new(AuthCodeRequest { codes: auth_codes });
-        match self.auth_stub.send_auth_codes(auth_code_request).await {
+        let verification_code_request = tonic::Request::new(VerificationCodeRequest {
+            codes: verification_codes,
+        });
+        match self
+            .verification_stub
+            .send_verification_codes(verification_code_request)
+            .await
+        {
             Ok(response) => {
                 info!("{}", response.into_inner().msg);
             }
             Err(status) => {
-                error!("Failed to send auth codes: {}", status.code());
+                error!("Failed to send verification codes: {}", status.code());
             }
         };
 
