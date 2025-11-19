@@ -1,0 +1,47 @@
+syntax = "proto3";
+package chungustrator_enet;
+
+service ChungusService {
+  rpc SendVerificationCodes(VerificationCodeRequest) returns (VerificationCodeResponse);
+  rpc StreamEvents(stream ChungustratorMessage) returns (stream ChunguswayMessage);
+}
+
+// Stub
+message ChungustratorMessage {
+  oneof payload {
+    VerificationCodeRequest verification_code_req = 1;
+    Ping ping = 2;  // Optional: keepalive
+  }
+}
+
+message VerificationCodeRequest {
+  map<string, string> codes = 1;
+}
+
+message Ping {
+  int64 timestamp = 1;
+}
+
+
+// Service
+message ChunguswayMessage {
+  oneof payload {
+    VerificationCodeResponse verification_code_res = 1;
+    GameServerShutdown shutdown = 2;
+    Pong pong = 3;  // Optional: keepalive response
+  }
+}
+
+message VerificationCodeResponse {
+  string msg = 1;
+}
+
+message GameServerShutdown {
+  string server_address = 1;  // e.g., "127.0.0.1:28785"
+  int64 timestamp = 2;         // Unix timestamp of shutdown
+  string reason = 3;           // Optional: why it shut down
+}
+
+message Pong {
+  int64 timestamp = 1;
+}

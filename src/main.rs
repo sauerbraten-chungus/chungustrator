@@ -11,7 +11,7 @@ use tokio::sync::{Mutex, mpsc};
 use tonic::transport::Server;
 use tracing::error;
 
-use chungustrator_enet::verification_code_service_client::VerificationCodeServiceClient;
+use chungustrator_enet::chungus_service_client::ChungusServiceClient;
 
 // mod handler;
 mod orchestrator;
@@ -35,11 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_ids(true)
         .init();
 
-    let verification_stub =
-        VerificationCodeServiceClient::connect("http://127.0.0.1:50051").await?;
+    let chungus_stub = ChungusServiceClient::connect("http://127.0.0.1:50051").await?;
 
     let (tx, rx) = mpsc::unbounded_channel();
-    if let Err(e) = orchestrator::Chungustrator::new(rx, verification_stub).await {
+    if let Err(e) = orchestrator::Chungustrator::new(rx, chungus_stub).await {
         error!("Error creating chungustrator: {}", e);
     }
 

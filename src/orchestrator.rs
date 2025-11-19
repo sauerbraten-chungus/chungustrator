@@ -17,11 +17,13 @@ use serde::Serialize;
 
 use thiserror::Error;
 use tokio::{select, sync::mpsc, time};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::transport::Channel;
 use tracing::{error, info};
 
 use crate::chungustrator_enet::{
-    self, VerificationCodeRequest, verification_code_service_client::VerificationCodeServiceClient,
+    self, ChungustratorMessage, ChunguswayMessage, VerificationCodeRequest,
+    chungus_service_client::ChungusServiceClient, chungustrator_message, chungusway_message,
 };
 
 #[derive(Error, Debug)]
@@ -145,7 +147,7 @@ impl ChungustratorConfig {
 }
 
 pub struct Chungustrator {
-    verification_stub: VerificationCodeServiceClient<Channel>,
+    stream_tx: mpsc::UnboundedSender<ChungustratorMessage>,
     config: ChungustratorConfig,
     client: Docker,
     list: HashMap<String, String>,
@@ -156,16 +158,34 @@ pub struct Chungustrator {
 impl Chungustrator {
     pub async fn new(
         rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
-        verification_stub: VerificationCodeServiceClient<Channel>,
+        mut chungus_stub: ChungusServiceClient<Channel>,
     ) -> Result<(), OrchestratorError> {
         let config = ChungustratorConfig::new().unwrap_or_else(|_| ChungustratorConfig {
             wan_ip: "".to_string(),
             lan_ip: "".to_string(),
         });
 
+        // Create channel for outgoing stream messages
+        let (stream_tx, stream_rx) = mpsc::unbounded_channel::<ChungustratorMessage>();
+
+        // Convert receiver to stream
+        let outbound_stream = UnboundedReceiverStream::new(stream_rx);
+
+        // Establish bidirectional streaming connection
+        let response = chungus_stub.stream_events(outbound_stream).await?;
+        let mut inbound_stream = response.into_inner();
+
+        // Spawn task to handle incoming messages from the service
+        tokio::spawn(async move {
+            while let Ok(Some(msg)) = inbound_stream.message().await {
+                Self::handle_incoming_message(msg).await;
+            }
+            info!("Chungus stream closed");
+        });
+
         let client = Docker::connect_with_socket_defaults()?;
         let orchestrator = Chungustrator {
-            verification_stub,
+            stream_tx,
             config,
             client,
             list: HashMap::new(),
@@ -176,6 +196,25 @@ impl Chungustrator {
         tokio::spawn(async move { orchestrator.run().await });
 
         Ok(())
+    }
+
+    async fn handle_incoming_message(msg: ChunguswayMessage) {
+        if let Some(payload) = msg.payload {
+            match payload {
+                chungusway_message::Payload::VerificationCodeRes(response) => {
+                    info!("Received verification code response: {}", response.msg);
+                }
+                chungusway_message::Payload::Shutdown(shutdown) => {
+                    info!(
+                        "Received shutdown event for server {} at {} - reason: {}",
+                        shutdown.server_address, shutdown.timestamp, shutdown.reason
+                    );
+                }
+                chungusway_message::Payload::Pong(pong) => {
+                    info!("Received pong at timestamp: {}", pong.timestamp);
+                }
+            }
+        }
     }
 
     async fn run(mut self) {
@@ -327,21 +366,18 @@ impl Chungustrator {
             error!("Channel error sending create container response: {}", e);
         }
 
-        let verification_code_request = tonic::Request::new(VerificationCodeRequest {
-            codes: verification_codes,
-        });
-        match self
-            .verification_stub
-            .send_verification_codes(verification_code_request)
-            .await
-        {
-            Ok(response) => {
-                info!("{}", response.into_inner().msg);
-            }
-            Err(status) => {
-                error!("Failed to send verification codes: {}", status.code());
-            }
+        // Send verification codes through the stream
+        let message = ChungustratorMessage {
+            payload: Some(chungustrator_message::Payload::VerificationCodeReq(
+                VerificationCodeRequest {
+                    codes: verification_codes,
+                },
+            )),
         };
+
+        if let Err(e) = self.stream_tx.send(message) {
+            error!("Failed to send verification codes through stream: {}", e);
+        }
 
         Ok(())
     }
