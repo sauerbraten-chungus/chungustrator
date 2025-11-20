@@ -5,6 +5,7 @@ use std::{
     env::{self, VarError},
     fmt::Error,
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use bollard::{
@@ -22,7 +23,7 @@ use tonic::transport::Channel;
 use tracing::{error, info};
 
 use crate::chungustrator_enet::{
-    self, ChungustratorMessage, ChunguswayMessage, VerificationCodeRequest,
+    self, ChungustratorMessage, ChunguswayMessage, Ping, VerificationCodeRequest,
     chungus_service_client::ChungusServiceClient, chungustrator_message, chungusway_message,
 };
 
@@ -170,6 +171,20 @@ impl Chungustrator {
 
         // Convert receiver to stream
         let outbound_stream = UnboundedReceiverStream::new(stream_rx);
+
+        // Send initial ping to establish connection
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        stream_tx
+            .send(ChungustratorMessage {
+                payload: Some(chungustrator_message::Payload::Ping(Ping { timestamp })),
+            })
+            .ok();
+
+        info!("Sent initial ping with timestamp: {}", timestamp);
 
         // Establish bidirectional streaming connection
         let response = chungus_stub.stream_events(outbound_stream).await?;
