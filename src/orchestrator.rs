@@ -299,11 +299,16 @@ impl Chungustrator {
                                 port_bindings
                             }),
                             network_mode: Some("vidya_chunguswork".to_string()),
+                            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
                             ..Default::default()
                         }
                     }),
                     image: Some("chungusmod:latest".to_string()),
-                    env: Some(vec![format!("GAME_SERVER_PORT={}", game_server_port)]),
+                    env: Some(vec![
+                        format!("GAME_SERVER_PORT={}", game_server_port),
+                        "CHUNGUS_PEER_ADDRESS=172.18.0.1".to_string(),
+                        "CHUNGUS_PEER_PORT=30000".to_string(),
+                    ]),
                     exposed_ports: Some({
                         let mut exposed_ports = HashMap::new();
                         exposed_ports.insert(format!("{}/tcp", game_server_port), HashMap::new());
