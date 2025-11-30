@@ -72,18 +72,20 @@ impl ServerPorts {
     }
 }
 
-struct PortAllocator {
+struct ServerAllocator {
     available_ports: BinaryHeap<Reverse<u16>>,
     active_ports: HashSet<u16>,
     pub next_port: u16,
+    servers: HashMap<String, u16>,
 }
 
-impl PortAllocator {
+impl ServerAllocator {
     pub fn new(starting_port: u16) -> Self {
         Self {
             available_ports: BinaryHeap::new(),
             active_ports: HashSet::new(),
             next_port: starting_port,
+            servers: HashMap::new(),
         }
     }
 
@@ -120,6 +122,14 @@ impl PortAllocator {
         true
     }
 
+    pub fn add_server(&mut self, container_id: String, port: u16) {
+        self.servers.insert(container_id, port);
+    }
+
+    pub fn remove_server(&mut self, container_id: String) {
+        self.servers.remove(&container_id);
+    }
+
     pub fn is_port_active(&self, port: u16) -> bool {
         if self.active_ports.contains(&port) {
             true
@@ -152,7 +162,7 @@ pub struct Chungustrator {
     config: ChungustratorConfig,
     client: Docker,
     list: HashMap<String, String>,
-    port_allocator: PortAllocator,
+    server_allocator: ServerAllocator,
     rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
 }
 
@@ -204,7 +214,7 @@ impl Chungustrator {
             config,
             client,
             list: HashMap::new(),
-            port_allocator: PortAllocator::new(28785),
+            server_allocator: ServerAllocator::new(28785),
             rx,
         };
 
@@ -263,15 +273,11 @@ impl Chungustrator {
         Ok(())
     }
 
-    pub async fn create_container(
+    async fn do_create_container(
         &mut self,
-        verification_codes: HashMap<String, String>,
-        response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
-    ) -> Result<(), OrchestratorError> {
-        let ports = self.port_allocator.allocate_port();
-        let game_server_port = ports.game_server_port;
-        let server_query_client_port = ports.server_query_client_port;
-
+        game_server_port: u16,
+        server_query_client_port: u16,
+    ) -> Result<String, OrchestratorError> {
         let game_server_container_id = self
             .client
             .create_container(
@@ -298,8 +304,10 @@ impl Chungustrator {
                                 );
                                 port_bindings
                             }),
-                            network_mode: Some("vidya_chunguswork".to_string()),
-                            extra_hosts: Some(vec!["host.docker.internal:172.18.0.1".to_string()]),
+                            // network_mode: Some("vidya_chunguswork".to_string()),
+                            extra_hosts: Some(vec![
+                                "host.docker.internal:host-gateway".to_string(),
+                            ]),
                             ..Default::default()
                         }
                     }),
@@ -377,8 +385,31 @@ impl Chungustrator {
             )
             .await?;
 
+        Ok(game_server_container_id)
+    }
+
+    pub async fn create_container(
+        &mut self,
+        verification_codes: HashMap<String, String>,
+        response_tx: mpsc::UnboundedSender<OrchestratorResponse>,
+    ) -> Result<(), OrchestratorError> {
+        let ports = self.server_allocator.allocate_port();
+        let game_server_port = ports.game_server_port;
+        let server_query_client_port = ports.server_query_client_port;
+
+        let container_id = match self
+            .do_create_container(game_server_port, server_query_client_port)
+            .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                self.server_allocator.release_port(ports);
+                return Err(e.into());
+            }
+        };
+
         if let Err(e) = response_tx.send(OrchestratorResponse::ContainerCreationSuccess {
-            id: game_server_container_id,
+            id: container_id,
             wan_ip: self.config.wan_ip.clone(),
             lan_ip: self.config.lan_ip.clone(),
             port: game_server_port,
