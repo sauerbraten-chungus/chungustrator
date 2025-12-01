@@ -8,6 +8,7 @@ use std::{
 use bollard::{
     Docker,
     models::{ContainerCreateBody, HostConfig, PortBinding},
+    query_parameters::{StopContainerOptions, StopContainerOptionsBuilder},
 };
 
 use thiserror::Error;
@@ -70,6 +71,8 @@ struct ServerAllocator {
     available_ports: BinaryHeap<Reverse<u16>>,
     active_ports: HashSet<u16>,
     pub next_port: u16,
+    // Only the first 12 characters of container_id
+    // Since containers themselves only hold 12, not the full 64
     servers: HashMap<String, u16>,
 }
 
@@ -220,8 +223,11 @@ impl Chungustrator {
                 chungusway_message::Payload::Shutdown(shutdown) => {
                     info!(
                         "Received shutdown event for server {} at {} - reason: {}",
-                        shutdown.server_address, shutdown.timestamp, shutdown.reason
+                        shutdown.server_container_id, shutdown.timestamp, shutdown.reason
                     );
+                    if let Err(e) = self.shutdown_container(shutdown.server_container_id).await {
+                        error!("Orchestrator Error: {}", e);
+                    }
                 }
                 chungusway_message::Payload::Pong(pong) => {
                     info!("Received pong at timestamp: {}", pong.timestamp);
@@ -400,7 +406,7 @@ impl Chungustrator {
         };
 
         self.server_allocator
-            .add_server(container_id.clone(), game_server_port);
+            .add_server(container_id[..12].to_string(), game_server_port);
 
         if let Err(e) = response_tx.send(OrchestratorResponse::ContainerCreationSuccess {
             id: container_id,
@@ -424,6 +430,24 @@ impl Chungustrator {
             error!("Failed to send verification codes through stream: {}", e);
         }
 
+        Ok(())
+    }
+
+    pub async fn shutdown_container(
+        &mut self,
+        container_id: String,
+    ) -> Result<(), OrchestratorError> {
+        let shutdown_options = StopContainerOptionsBuilder::new().t(10).build();
+
+        if let Err(e) = self
+            .client
+            .stop_container(&container_id, Some(shutdown_options))
+            .await
+        {
+            error!("Error stopping container {}: {}", container_id, e);
+        }
+
+        self.server_allocator.remove_server(container_id);
         Ok(())
     }
 }
