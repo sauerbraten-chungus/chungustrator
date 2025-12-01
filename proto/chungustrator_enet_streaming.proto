@@ -37,9 +37,9 @@ message VerificationCodeResponse {
 }
 
 message GameServerShutdown {
-  string server_address = 1;  // e.g., "127.0.0.1:28785"
-  int64 timestamp = 2;         // Unix timestamp of shutdown
-  string reason = 3;           // Optional: why it shut down
+  string server_container_id= 1;  // Docker container-id
+  int64 timestamp = 2;            // Unix timestamp of shutdown
+  string reason = 3;              // Optional: why it shut down
 }
 
 message Pong {
