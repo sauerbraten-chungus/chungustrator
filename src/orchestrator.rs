@@ -158,17 +158,17 @@ impl ChungustratorConfig {
 }
 
 pub struct Chungustrator {
-    stream_tx: mpsc::UnboundedSender<ChungustratorMessage>,
+    chungusway_stream_tx: mpsc::UnboundedSender<ChungustratorMessage>,
     config: ChungustratorConfig,
     client: Docker,
     list: HashMap<String, String>,
     server_allocator: ServerAllocator,
-    rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
+    chungustrator_service_rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
 }
 
 impl Chungustrator {
     pub async fn new(
-        rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
+        chungustrator_service_rx: mpsc::UnboundedReceiver<OrchestratorMessage>,
         mut chungus_stub: ChungusServiceClient<Channel>,
     ) -> Result<(), OrchestratorError> {
         let config = ChungustratorConfig::new().unwrap_or_else(|_| ChungustratorConfig {
@@ -176,54 +176,48 @@ impl Chungustrator {
             lan_ip: "".to_string(),
         });
 
-        // Create channel for outgoing stream messages
-        let (stream_tx, stream_rx) = mpsc::unbounded_channel::<ChungustratorMessage>();
+        let (chungusway_stream_tx, chungusway_stream_rx) =
+            mpsc::unbounded_channel::<ChungustratorMessage>();
 
-        // Convert receiver to stream
-        let outbound_stream = UnboundedReceiverStream::new(stream_rx);
+        // Stream for Chungusway to consume,
+        let chungusway_outbound_stream = UnboundedReceiverStream::new(chungusway_stream_rx);
 
-        // Send initial ping to establish connection
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
 
-        stream_tx
+        // Send initial ping to establish connection
+        chungusway_stream_tx
             .send(ChungustratorMessage {
                 payload: Some(chungustrator_message::Payload::Ping(Ping { timestamp })),
             })
             .ok();
-
         info!("Sent initial ping with timestamp: {}", timestamp);
 
         // Establish bidirectional streaming connection
-        let response = chungus_stub.stream_events(outbound_stream).await?;
-        let mut inbound_stream = response.into_inner();
-
-        // Spawn task to handle incoming messages from the service
-        tokio::spawn(async move {
-            while let Ok(Some(msg)) = inbound_stream.message().await {
-                Self::handle_incoming_message(msg).await;
-            }
-            info!("Chungus stream closed");
-        });
+        let response = chungus_stub
+            .stream_events(chungusway_outbound_stream)
+            .await?;
+        let chungusway_inbound_stream = response.into_inner();
 
         let client = Docker::connect_with_socket_defaults()?;
         let orchestrator = Chungustrator {
-            stream_tx,
+            chungusway_stream_tx,
             config,
             client,
             list: HashMap::new(),
             server_allocator: ServerAllocator::new(28785),
-            rx,
+            chungustrator_service_rx,
         };
 
-        tokio::spawn(async move { orchestrator.run().await });
+        // Start orchestrator main loop
+        tokio::spawn(async move { orchestrator.run(chungusway_inbound_stream).await });
 
         Ok(())
     }
 
-    async fn handle_incoming_message(msg: ChunguswayMessage) {
+    async fn handle_chungusway_inbound_messages(&self, msg: ChunguswayMessage) {
         if let Some(payload) = msg.payload {
             match payload {
                 chungusway_message::Payload::VerificationCodeRes(response) => {
@@ -242,7 +236,7 @@ impl Chungustrator {
         }
     }
 
-    async fn run(mut self) {
+    async fn run(mut self, mut chungusway_inbound_stream: tonic::Streaming<ChunguswayMessage>) {
         let mut interval = time::interval(time::Duration::from_secs(5));
 
         loop {
@@ -250,11 +244,14 @@ impl Chungustrator {
                 _ = interval.tick() => {
                     info!("processing internal shit");
                 }
-                Some(msg) = self.rx.recv() => {
+                Some(msg) = self.chungustrator_service_rx.recv() => {
                     info!("received msg from handler!");
                     if let Err(e) = self.receive(msg).await {
                         error!("Orchestrator Error: {}", e);
                     }
+                }
+                Ok(Some(msg)) = chungusway_inbound_stream.message() => {
+                    self.handle_chungusway_inbound_messages(msg).await;
                 }
             }
         }
@@ -408,6 +405,9 @@ impl Chungustrator {
             }
         };
 
+        self.server_allocator
+            .add_server(container_id.clone(), game_server_port);
+
         if let Err(e) = response_tx.send(OrchestratorResponse::ContainerCreationSuccess {
             id: container_id,
             wan_ip: self.config.wan_ip.clone(),
@@ -426,7 +426,7 @@ impl Chungustrator {
             )),
         };
 
-        if let Err(e) = self.stream_tx.send(message) {
+        if let Err(e) = self.chungusway_stream_tx.send(message) {
             error!("Failed to send verification codes through stream: {}", e);
         }
 

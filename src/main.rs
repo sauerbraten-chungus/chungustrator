@@ -35,17 +35,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_ids(true)
         .init();
 
+    // IMPORTANT: Comments for sanity, god my naming sucked ass, fuck.
+
+    // Connect Chungustrator (gRPC Stub) -> Chungusway (gRPC Service)
+    // Bidirectional Streaming
     let chungus_stub = ChungusServiceClient::connect("http://127.0.0.1:50051").await?;
 
+    // Channel exclusively for Chungustrator (rx) <- ChungustratorService (tx, gRPC Service) <- Matchmaker (gRPC Stub)
+    // Proxy to Action
     let (tx, rx) = mpsc::unbounded_channel();
     if let Err(e) = orchestrator::Chungustrator::new(rx, chungus_stub).await {
         error!("Error creating chungustrator: {}", e);
     }
 
+    // Host Chungustrator (gRPC Service) <- Connection  Matchmaker (gRPC Stub)
+    // Request/Response
     let chungustrator_grpc_service = service::ChungustratorService { tx };
-
     let svc = ChungustratorServer::new(chungustrator_grpc_service);
-
     Server::builder()
         .add_service(svc)
         .serve("0.0.0.0:7000".parse().unwrap())
