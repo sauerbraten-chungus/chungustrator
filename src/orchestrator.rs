@@ -1,29 +1,23 @@
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap, HashSet},
-    default,
     env::{self, VarError},
-    fmt::Error,
-    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use bollard::{
     Docker,
-    models::{ContainerCreateBody, EndpointSettings, HostConfig, PortBinding},
-    network::ConnectNetworkOptions,
-    query_parameters::CreateContainerOptionsBuilder,
+    models::{ContainerCreateBody, HostConfig, PortBinding},
 };
-use serde::Serialize;
 
 use thiserror::Error;
-use tokio::{select, sync::mpsc, time};
+use tokio::{sync::mpsc, time};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::transport::Channel;
 use tracing::{error, info};
 
 use crate::chungustrator_enet::{
-    self, ChungustratorMessage, ChunguswayMessage, Ping, VerificationCodeRequest,
+    ChungustratorMessage, ChunguswayMessage, Ping, VerificationCodeRequest,
     chungus_service_client::ChungusServiceClient, chungustrator_message, chungusway_message,
 };
 
@@ -217,7 +211,7 @@ impl Chungustrator {
         Ok(())
     }
 
-    async fn handle_chungusway_inbound_messages(&self, msg: ChunguswayMessage) {
+    async fn handle_chungusway_inbound_messages(&mut self, msg: ChunguswayMessage) {
         if let Some(payload) = msg.payload {
             match payload {
                 chungusway_message::Payload::VerificationCodeRes(response) => {
