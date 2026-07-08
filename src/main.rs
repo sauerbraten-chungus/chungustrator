@@ -39,7 +39,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect Chungustrator (gRPC Stub) -> Chungusway (gRPC Service)
     // Bidirectional Streaming
-    let chungus_stub = ChungusServiceClient::connect("http://127.0.0.1:50051").await?;
+    let chungusway_url =
+        std::env::var("CHUNGUSWAY_URL").unwrap_or_else(|_| "http://127.0.0.1:50051".to_string());
+    let chungus_stub = loop {
+        match ChungusServiceClient::connect(chungusway_url.clone()).await {
+            Ok(client) => break client,
+            Err(e) => {
+                error!("chungusway not reachable at {chungusway_url}: {e}; retrying in 2s");
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        }
+    };
 
     // Channel exclusively for Chungustrator (rx) <- ChungustratorService (tx, gRPC Service) <- Matchmaker (gRPC Stub)
     // Proxy to Action
@@ -54,7 +64,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let svc = ChungustratorServer::new(chungustrator_grpc_service);
     Server::builder()
         .add_service(svc)
-        .serve("0.0.0.0:7000".parse().unwrap())
+        .serve(
+            format!(
+                "0.0.0.0:{}",
+                std::env::var("CHUNGUSTRATOR_PORT").unwrap_or_else(|_| "7100".to_string())
+            )
+            .parse()
+            .unwrap(),
+        )
         .await?;
 
     Ok(())

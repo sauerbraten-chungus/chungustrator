@@ -348,8 +348,8 @@ impl Chungustrator {
                     image: Some("sqc:latest".to_string()),
                     env: Some({
                         vec![
-                            "PLAYER_SERVICE_IP=http://player:3000".to_string(),
-                            "AUTH_SERVICE_IP=http://auth:8081".to_string(),
+                            "PLAYER_SERVICE_IP=http://host.docker.internal:3000".to_string(),
+                            "AUTH_SERVICE_IP=http://host.docker.internal:8081".to_string(),
                             "GAME_SERVER_IP=localhost".to_string(),
                             format!("GAME_SERVER_PORT={}", game_server_port),
                             format!(
