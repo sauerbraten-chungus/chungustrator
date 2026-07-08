@@ -19,8 +19,7 @@ Container orchestrator for game sessions. Creates/destroys Docker containers for
 
 Startup retries the connection every 2s until chungusway is reachable — start order between the two no longer matters.
 
-**Sends:** `VerificationCodeRequest` (codes to forward to game server), `Ping` (one initial ping when the stream is established — there is **no** periodic heartbeat)
-**Receives:** `VerificationCodeResponse`, `GameServerShutdown` (container ID + reason), `Pong`
+**Sends:** `VerificationCodeRequest` (codes to forward to game server), `Ping` (one initial ping when the stream is established — there is **no** periodic heartbeat) **Receives:** `VerificationCodeResponse`, `GameServerShutdown` (container ID + reason), `Pong`
 
 ## Environment Variables
 
