@@ -417,11 +417,19 @@ impl Chungustrator {
             error!("Channel error sending create container response: {}", e);
         }
 
-        // Send verification codes through the stream
+        // Send verification codes through the stream, addressed to the game
+        // server chungusway must deliver them to (allocated above).
+        let game_server_host = if self.config.lan_ip.is_empty() {
+            "127.0.0.1".to_string()
+        } else {
+            self.config.lan_ip.clone()
+        };
         let message = ChungustratorMessage {
             payload: Some(chungustrator_message::Payload::VerificationCodeReq(
                 VerificationCodeRequest {
                     codes: verification_codes,
+                    game_server_host,
+                    game_server_port: game_server_port as u32,
                 },
             )),
         };

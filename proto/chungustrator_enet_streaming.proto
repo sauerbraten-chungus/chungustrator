@@ -2,7 +2,6 @@ syntax = "proto3";
 package chungustrator_enet;
 
 service ChungusService {
-  rpc SendVerificationCodes(VerificationCodeRequest) returns (VerificationCodeResponse);
   rpc StreamEvents(stream ChungustratorMessage) returns (stream ChunguswayMessage);
 }
 
@@ -16,6 +15,10 @@ message ChungustratorMessage {
 
 message VerificationCodeRequest {
   map<string, string> codes = 1;
+  // Where chungusway should deliver the codes: the game server's ENet endpoint,
+  // known only to chungustrator (host port allocated per match).
+  string game_server_host = 2;
+  uint32 game_server_port = 3;
 }
 
 message Ping {
